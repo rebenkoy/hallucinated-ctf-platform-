@@ -1,0 +1,52 @@
+# Course hub. Vulnerable challenge services are added later, each as its own
+# compose file that joins the `vuln-services-ctfnet` network (see INFRA.md).
+services:
+  web:
+    build: ./web
+    container_name: vuln-services-web
+    ports:
+      - "8000:8000"
+    environment:
+      # Session signing key + the admin account. Override via infra/.env.
+      SECRET_KEY: "${SECRET_KEY:-dev-insecure-change-me}"
+      ADMIN_USER: "${ADMIN_USER:-admin}"
+      ADMIN_PASS: "${ADMIN_PASS:-admin}"
+      # TASKS_REPO_URL: override if the public challenge-source repo moves
+    volumes:
+      - ./web/data:/app/data                       # sqlite (users + progress) persists here
+      - ./web/challenges.toml:/app/challenges.toml:ro   # edit challenges without a rebuild
+      - ./web/static/files:/app/static/files:ro    # challenge downloads (pcaps, etc.) — drop-in, no rebuild
+    restart: unless-stopped
+    networks:
+      - ctfnet
+
+  # Shared exfil sink for client-side challenges. Captures every HTTP hit (last
+  # ~5 min) and shows them at :8091/__view; the hub's Listener tab reads /__feed.
+  listener:
+    build: ./listener
+    container_name: vuln-services-listener
+    ports:
+      - "8091:80"
+    restart: unless-stopped
+    networks:
+      - ctfnet
+
+  # Shared headless-Chromium "admin bot" — the victim for every client-side rung.
+  # Drop a plugin in infra/adminbot/plugins/ (act(driver)); it runs each cycle.
+  adminbot:
+    build: ./adminbot
+    container_name: adminbot
+    environment:
+      CYCLE_MINUTES: "${BOT_CYCLE_MINUTES:-2}"
+      FLAG_XSS_STORED: "${FLAG_XSS_STORED:-}"
+    volumes:
+      - ./adminbot/plugins:/app/plugins                     # add rungs without a rebuild
+    extra_hosts:
+      - "host.docker.internal:host-gateway"                 # reach challenge host ports
+    restart: unless-stopped
+    networks:
+      - ctfnet
+
+networks:
+  ctfnet:
+    name: vuln-services-ctfnet

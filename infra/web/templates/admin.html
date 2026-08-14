@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Admin — vuln-services{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Accounts</h1>
+  <p class="progress">{{ rows|length }} users</p>
+</div>
+
+<p class="warn">Passwords are shown in plaintext so you can recover forgotten
+logins. This page is admin-only and exists only because this is a short, local CTF.</p>
+
+<div class="tablewrap">
+  <table>
+    <thead>
+      <tr><th>#</th><th>Username</th><th>Password</th><th>Role</th><th>Solved</th><th>Registered</th></tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+        <tr>
+          <td>{{ r['id'] }}</td>
+          <td>{{ r['username'] }}</td>
+          <td><code>{{ r['password'] }}</code></td>
+          <td>{{ 'admin' if r['is_admin'] else 'student' }}</td>
+          <td>{{ r['solves'] }} / {{ total }}</td>
+          <td class="muted">{{ r['created_at'] }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

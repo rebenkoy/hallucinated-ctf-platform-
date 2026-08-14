@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Register — vuln-services{% endblock %}
+{% block content %}
+<div class="authbox">
+  <h1>Register</h1>
+  <form method="post" action="{{ url_for('register') }}">
+    <label>Username <input type="text" name="username" autocomplete="username" autofocus></label>
+    <label>Password <input type="password" name="password" autocomplete="new-password"></label>
+    <button type="submit">Create account</button>
+  </form>
+  <p class="muted">Already have one? <a href="{{ url_for('login') }}">Log in</a>.</p>
+  <p class="warn">Heads up: this is a throwaway CTF account. Passwords are stored in
+  plaintext and visible to instructors — don't reuse a real password.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <h1>Challenges</h1>
+  <p class="progress">{{ solved|length }} / {{ total }} solved</p>
+</div>
+
+{% for category, items in groups.items() %}
+  <section class="category">
+    <h2 class="cat-head">
+      {{ category }}
+      <span class="cat-count">{{ items | selectattr('id', 'in', solved) | list | length }}/{{ items|length }}</span>
+    </h2>
+    <div class="tiles">
+      {% for c in items %}
+        <a class="tile {% if c.id in solved %}is-solved{% endif %}"
+           href="{{ url_for('challenge', cid=c.id) }}">
+          <div class="tile-cat">{{ c.category }}</div>
+          <div class="tile-title">{{ c.title }}</div>
+          <div class="tile-state">
+            {% if c.id in solved %}✓ Solved{% else %}Unsolved{% endif %}
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+{% else %}
+  <p class="empty">No challenges yet. Add one in <code>infra/web/challenges.toml</code>.</p>
+{% endfor %}
+{% endblock %}

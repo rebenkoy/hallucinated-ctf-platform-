@@ -1,0 +1,23 @@
+# runtime state — never commit accounts, progress, or secrets
+infra/web/data/*
+!infra/web/data/.gitkeep
+.env
+infra/.env
+
+# the single secret store (flags + forensics secrets) — copy from the .example
+infra/web/challenges.toml
+
+# handout captures are generated (private solutions repo builders) and dropped in here
+# at deploy time — never commit them (they contain the sniffable answer)
+infra/web/static/files/*.pcap
+
+# the other two repos live nested here (see README "Repositories")
+/challenges/
+/solutions/
+
+# local agent/editor state
+/.claude/
+
+# python
+__pycache__/
+*.pyc

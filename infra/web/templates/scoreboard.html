@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Scoreboard — vuln-services{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Scoreboard</h1>
+  <p class="progress">{{ total }} challenges</p>
+</div>
+
+<div class="tablewrap">
+  <table>
+    <thead>
+      <tr><th>#</th><th>Player</th><th>Solved</th></tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ r['username'] }}</td>
+          <td>{{ r['solves'] }} / {{ total }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="muted">No players yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

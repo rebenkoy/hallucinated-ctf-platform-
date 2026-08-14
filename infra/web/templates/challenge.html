@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ c.title }} — vuln-services{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('index') }}">← All challenges</a>
+
+<div class="page-head">
+  <div>
+    <span class="tile-cat">{{ c.category }}</span>
+    <h1>{{ c.title }}
+      {% if solved %}<span class="badge">✓ Solved</span>{% endif %}
+    </h1>
+  </div>
+</div>
+
+{% if c.link %}
+  <p><a class="svc" href="{{ c.link }}" target="_blank" rel="noreferrer">Open service ↗ {{ c.link }}</a></p>
+{% endif %}
+
+{% if source_url %}
+  <p><a class="svc" href="{{ source_url }}" target="_blank" rel="noreferrer">View source on GitHub ↗</a></p>
+{% endif %}
+
+<div class="desc">{{ desc_html|safe }}</div>
+
+<form method="post" action="{{ url_for('submit', cid=c.id) }}" class="flagform">
+  <input type="text" name="flag" placeholder="CTF{...}" autocomplete="off" autofocus>
+  <button type="submit">Submit flag</button>
+</form>
+{% endblock %}
