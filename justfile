@@ -50,38 +50,38 @@ up:
     export FLAG_XSS_STORED="$(scripts/secret.sh xss-stored flag)"
     {{compose}} up -d --build
 
-# bring up one challenge service; its FLAG is injected from the manifest (unused by xss-stored,
-# whose flag rides the admin bot). Routed by Traefik at https://<id>.<domain>. e.g. `just challenge sqli-union`
+# bring up one challenge by id (its folder may differ from the id, e.g. sniff). FLAG is injected
+# from the manifest; Traefik serves it at https://<id>.<domain>. The sniff store also needs the
+# pcap password: `ADMIN_PASS=... just challenge sniff-secretstore` (see the private ANSWER-KEY).
 challenge id:
     #!/usr/bin/env sh
     set -eu
     set -a; [ -f infra/.env ] && . ./infra/.env; set +a
+    dir=$(for m in challenges/*/meta.toml; do grep -q "^id[[:space:]]*=[[:space:]]*\"{{id}}\"" "$m" && { dirname "$m"; break; }; done)
+    [ -n "$dir" ] || { echo "challenge: no challenge with id '{{id}}' (is challenges/ present?)" >&2; exit 1; }
     export FLAG="$(scripts/secret.sh {{id}} flag)"
-    docker compose -f challenges/{{id}}/docker-compose.yml up -d --build
+    docker compose -f "$dir/docker-compose.yml" up -d --build
 
-# stop one challenge service
+# stop one challenge by id
 challenge-down id:
-    docker compose -f challenges/{{id}}/docker-compose.yml down
-
-# forensics live service: the plaintext Secret Store (sniff-secretstore). FLAG is the random
-# one from the manifest; ADMIN_PASS must match the password frozen in the published pcap, so
-# the operator supplies it (from the private ANSWER-KEY): `ADMIN_PASS=... just sniff-up`.
-sniff-up:
     #!/usr/bin/env sh
     set -eu
-    set -a; [ -f infra/.env ] && . ./infra/.env; set +a
-    export FLAG="$(scripts/secret.sh sniff-secretstore flag)"
-    export ADMIN_PASS="${ADMIN_PASS:?set ADMIN_PASS to the pcap login password (see ANSWER-KEY)}"
-    docker compose -f challenges/sniff-http-secretstore/server/docker-compose.yml up -d --build
+    dir=$(for m in challenges/*/meta.toml; do grep -q "^id[[:space:]]*=[[:space:]]*\"{{id}}\"" "$m" && { dirname "$m"; break; }; done)
+    [ -n "$dir" ] || { echo "challenge-down: no challenge with id '{{id}}'" >&2; exit 1; }
+    docker compose -f "$dir/docker-compose.yml" down
 
-# forensics live service: the Hidden Vault (hidden-vault). Deploy on a host that resolves
-# to the secret domain (see the private solutions repo); the flag is injected from the manifest.
+# forensics live service: the Hidden Vault. It answers on the *leaked SNI host* (the pcap
+# secret), so the operator supplies it: `SECRET=<host> just vault-up`. This adds a gitignored
+# Traefik route for that host (kept out of the repo) and brings the vault up on ctfnet.
 vault-up:
     #!/usr/bin/env sh
     set -eu
     set -a; [ -f infra/.env ] && . ./infra/.env; set +a
+    SECRET="${SECRET:?set SECRET to the leaked SNI host, e.g. SECRET=<host> just vault-up (see ANSWER-KEY)}"
     export FLAG="$(scripts/secret.sh hidden-vault flag)"
-    docker compose -f challenges/sni-hidden-vault/vault/docker-compose.yml up -d --build
+    printf 'http:\n  routers:\n    hidden-vault:\n      rule: "Host(`%s`)"\n      entryPoints: [websecure]\n      tls: {}\n      service: hidden-vault\n  services:\n    hidden-vault:\n      loadBalancer:\n        servers:\n          - url: "http://hidden-vault:80"\n' "$SECRET" > infra/traefik/dynamic/vault.yml
+    docker compose -f challenges/sni-hidden-vault/docker-compose.yml up -d --build
+    echo "vault-up: hidden-vault live; Host($SECRET) routed. Point that host's DNS at the ingress."
 
 # stop and remove the stack
 down:
