@@ -4,10 +4,10 @@ compose := "docker compose -f infra/docker-compose.yml"
 default:
     @just --list
 
-# one-shot provisioning on a fresh machine: pick a domain + wildcard cert, clone the tasks +
-# solutions repos, then run every per-challenge setup (solutions/<dir>/setup.sh) — each writes
-# its flag.txt + symlinks meta/readme into active-challenges/; forensics also build pcaps.
-# Needs the PRIVATE solutions repo (it holds the flag values). Services end up at https://<name>.<domain>.
+# one-shot provisioning on a fresh machine: pick a domain + wildcard cert, clone the PUBLIC
+# tasks repo, then assemble active-challenges/ with a freshly-generated random flag per
+# challenge. No private repo needed — flags are random per deployment (printed at the end;
+# also readable from active-challenges/*/flag.txt). Services end up at https://<name>.<domain>.
 setup:
     #!/usr/bin/env sh
     set -eu
@@ -32,13 +32,13 @@ setup:
         fi
     fi
     [ -f infra/traefik/certs/wildcard.crt ] || scripts/gen-cert.sh "$DOMAIN"
-    # 3. clone the challenge + solution repos into place
-    [ -d challenges ] || git clone git@github.com:rebenkoy/les-simple-ctf.git challenges
-    [ -d solutions ] || git clone git@github.com:rebenkoy/les-simple-ctf-sols.git solutions
-    # 4. activate every challenge (writes active-challenges/<id>/)
-    ls solutions/*/setup.sh >/dev/null 2>&1 || { echo "setup: no solutions/*/setup.sh — is the private solutions repo cloned?" >&2; exit 1; }
-    for s in solutions/*/setup.sh; do echo ">>> $s"; sh "$s"; done
-    echo "setup: done. Now 'just up' + 'just challenge <id>'. Services live at https://<name>.$DOMAIN"
+    # 3. clone the PUBLIC tasks repo (challenge source + handouts). No auth, no private repo.
+    [ -d challenges ] || git clone https://github.com/rebenkoy/les-simple-ctf.git challenges
+    # 4. assemble active-challenges/: random flag per challenge + symlinked meta/readme
+    scripts/activate.sh
+    echo "setup: done — generated flags (also in active-challenges/*/flag.txt):"
+    for f in active-challenges/*/flag.txt; do printf '  %-26s %s\n' "$(basename "$(dirname "$f")")" "$(cat "$f")"; done
+    echo "Now 'just up' + 'just challenge <id>'. Services live at https://<name>.$DOMAIN"
 
 # build + start the CTF hub + Traefik + shared infra (detached). Injects the stored-XSS flag
 # into the admin bot from the live manifest; aborts if it isn't provisioned (run 'just setup').
@@ -63,14 +63,15 @@ challenge id:
 challenge-down id:
     docker compose -f challenges/{{id}}/docker-compose.yml down
 
-# forensics live service: the plaintext Secret Store (sniff-secretstore).
-# Injects the flag + the sniffable admin password from the manifest.
+# forensics live service: the plaintext Secret Store (sniff-secretstore). FLAG is the random
+# one from the manifest; ADMIN_PASS must match the password frozen in the published pcap, so
+# the operator supplies it (from the private ANSWER-KEY): `ADMIN_PASS=... just sniff-up`.
 sniff-up:
     #!/usr/bin/env sh
     set -eu
     set -a; [ -f infra/.env ] && . ./infra/.env; set +a
     export FLAG="$(scripts/secret.sh sniff-secretstore flag)"
-    export ADMIN_PASS="$(scripts/secret.sh sniff-secretstore admin_pass)"
+    export ADMIN_PASS="${ADMIN_PASS:?set ADMIN_PASS to the pcap login password (see ANSWER-KEY)}"
     docker compose -f challenges/sniff-http-secretstore/server/docker-compose.yml up -d --build
 
 # forensics live service: the Hidden Vault (hidden-vault). Deploy on a host that resolves

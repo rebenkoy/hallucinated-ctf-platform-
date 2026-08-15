@@ -288,9 +288,9 @@ def challenge(cid):
         .fetchone()
         is not None
     )
-    desc_html = md.markdown(
-        sub_host(c.get("description", "")), extensions=["fenced_code", "tables"]
-    )
+    # {host} -> domain; {flag} -> this challenge's flag (warmup shows its free flag)
+    desc = sub_host(c.get("description", "")).replace("{flag}", c.get("flag", ""))
+    desc_html = md.markdown(desc, extensions=["fenced_code", "tables"])
     return render_template(
         "challenge.html", c=c, desc_html=desc_html, solved=solved,
         source_url=source_url(c),
