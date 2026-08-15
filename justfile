@@ -1,6 +1,4 @@
-# docker compose command — prefer the v2 plugin, fall back to the standalone v1 binary
-dc := `docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose"`
-compose := dc + " -f infra/docker-compose.yml"
+compose := "docker compose -f infra/docker-compose.yml"
 
 # list available tasks
 default:
@@ -48,7 +46,8 @@ up:
     #!/usr/bin/env sh
     set -eu
     set -a; [ -f infra/.env ] && . ./infra/.env; set +a
-    DC="docker compose"; $DC version >/dev/null 2>&1 || DC="docker-compose"
+    docker compose version >/dev/null 2>&1 || { echo "just: needs Docker Compose v2 (the v1 'docker-compose' rejects these files — top-level 'name:'). Install: apt-get install -y docker-compose-plugin" >&2; exit 1; }
+    DC="docker compose"
     scripts/gen-routes.sh "${DOMAIN:-ctf.test}"
     export FLAG_XSS_STORED="$(scripts/secret.sh xss-stored flag)"
     $DC -f infra/docker-compose.yml up -d --build
@@ -69,7 +68,8 @@ challenge id:
     #!/usr/bin/env sh
     set -eu
     set -a; [ -f infra/.env ] && . ./infra/.env; set +a
-    DC="docker compose"; $DC version >/dev/null 2>&1 || DC="docker-compose"
+    docker compose version >/dev/null 2>&1 || { echo "just: needs Docker Compose v2 (the v1 'docker-compose' rejects these files — top-level 'name:'). Install: apt-get install -y docker-compose-plugin" >&2; exit 1; }
+    DC="docker compose"
     dir=$(for m in challenges/*/meta.toml; do grep -q "^id[[:space:]]*=[[:space:]]*\"{{id}}\"" "$m" && { dirname "$m"; break; }; done)
     [ -n "$dir" ] || { echo "challenge: no challenge with id '{{id}}' (is challenges/ present?)" >&2; exit 1; }
     export FLAG="$(scripts/secret.sh {{id}} flag)"
@@ -79,7 +79,8 @@ challenge id:
 challenge-down id:
     #!/usr/bin/env sh
     set -eu
-    DC="docker compose"; $DC version >/dev/null 2>&1 || DC="docker-compose"
+    docker compose version >/dev/null 2>&1 || { echo "just: needs Docker Compose v2 (the v1 'docker-compose' rejects these files — top-level 'name:'). Install: apt-get install -y docker-compose-plugin" >&2; exit 1; }
+    DC="docker compose"
     dir=$(for m in challenges/*/meta.toml; do grep -q "^id[[:space:]]*=[[:space:]]*\"{{id}}\"" "$m" && { dirname "$m"; break; }; done)
     [ -n "$dir" ] || { echo "challenge-down: no challenge with id '{{id}}'" >&2; exit 1; }
     $DC -f "$dir/docker-compose.yml" down
@@ -91,7 +92,8 @@ vault-up:
     #!/usr/bin/env sh
     set -eu
     set -a; [ -f infra/.env ] && . ./infra/.env; set +a
-    DC="docker compose"; $DC version >/dev/null 2>&1 || DC="docker-compose"
+    docker compose version >/dev/null 2>&1 || { echo "just: needs Docker Compose v2 (the v1 'docker-compose' rejects these files — top-level 'name:'). Install: apt-get install -y docker-compose-plugin" >&2; exit 1; }
+    DC="docker compose"
     SECRET="${SECRET:?set SECRET to the leaked SNI host, e.g. SECRET=<host> just vault-up (see ANSWER-KEY)}"
     export FLAG="$(scripts/secret.sh hidden-vault flag)"
     printf 'http:\n  routers:\n    hidden-vault:\n      rule: "Host(`%s`)"\n      entryPoints: [websecure]\n      tls: {}\n      service: hidden-vault\n  services:\n    hidden-vault:\n      loadBalancer:\n        servers:\n          - url: "http://hidden-vault:80"\n' "$SECRET" > infra/traefik/dynamic/vault.yml
