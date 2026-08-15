@@ -1,35 +1,96 @@
-# Course hub. Vulnerable challenge services are added later, each as its own
-# compose file that joins the `vuln-services-ctfnet` network (see INFRA.md).
+# Course hub + shared infra, fronted by Traefik. Every browser-facing service is reached
+# at https://<name>.${DOMAIN} (wildcard cert, TLS terminated by Traefik). Challenge stacks
+# join the same `vuln-services-ctfnet` network and advertise a Host(...) router via labels.
 services:
+  # TLS reverse proxy / ingress. Routes by Host header to labelled containers; serves the
+  # wildcard cert from ./traefik/certs (see ./traefik/dynamic/tls.yml). The subdomain
+  # aliases let the in-container admin bot resolve <name>.${DOMAIN} to Traefik on ctfnet.
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    command:
+      # File provider only — routes are generated from the manifest into dynamic/routes.yml
+      # (scripts/gen-routes.sh, run by `just up`). No Docker socket needed.
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "./traefik/dynamic:/etc/traefik/dynamic:ro"
+      - "./traefik/certs:/etc/traefik/certs:ro"
+    networks:
+      ctfnet:
+        aliases:
+          - "hub.${DOMAIN:-ctf.test}"
+          - "grader.${DOMAIN:-ctf.test}"
+          - "store.${DOMAIN:-ctf.test}"
+          - "listener.${DOMAIN:-ctf.test}"
+          - "xss-stored.${DOMAIN:-ctf.test}"
+          - "xss-reflected.${DOMAIN:-ctf.test}"
+          - "csrf.${DOMAIN:-ctf.test}"
+    restart: unless-stopped
+
   web:
     build: ./web
     container_name: vuln-services-web
-    ports:
-      - "8000:8000"
     environment:
       # Session signing key + the admin account. Override via infra/.env.
       SECRET_KEY: "${SECRET_KEY:-dev-insecure-change-me}"
       ADMIN_USER: "${ADMIN_USER:-admin}"
       ADMIN_PASS: "${ADMIN_PASS:-admin}"
+      DOMAIN: "${DOMAIN:-ctf.test}"            # tiles render https://<id>.${DOMAIN}
       # TASKS_REPO_URL: override if the public challenge-source repo moves
     volumes:
-      - ./web/data:/app/data                       # sqlite (users + progress) persists here
-      - ./web/challenges.toml:/app/challenges.toml:ro   # edit challenges without a rebuild
-      - ./web/static/files:/app/static/files:ro    # challenge downloads (pcaps, etc.) — drop-in, no rebuild
+      - ./web/data:/app/data                        # sqlite (users + progress) persists here
+      - ../active-challenges:/app/active-challenges:ro   # the live manifest (flag.txt + symlinked meta/readme)
+      - ../challenges:/app/challenges:ro            # symlink targets (meta.toml/readme.md) resolve here
+      - ./web/static/files:/app/static/files:ro     # challenge downloads (pcaps, etc.)
     restart: unless-stopped
     networks:
       - ctfnet
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hub.rule=Host(`hub.${DOMAIN:-ctf.test}`)"
+      - "traefik.http.routers.hub.entrypoints=websecure"
+      - "traefik.http.routers.hub.tls=true"
+      - "traefik.http.services.hub.loadbalancer.server.port=8000"
 
-  # Shared exfil sink for client-side challenges. Captures every HTTP hit (last
-  # ~5 min) and shows them at :8091/__view; the hub's Listener tab reads /__feed.
+  # Shared exfil sink for client-side challenges. Payloads beacon to http://listener/ (the
+  # ctfnet service name); students view hits at https://listener.${DOMAIN}/__view.
   listener:
     build: ./listener
     container_name: vuln-services-listener
-    ports:
-      - "8091:80"
     restart: unless-stopped
     networks:
       - ctfnet
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.listener.rule=Host(`listener.${DOMAIN:-ctf.test}`)"
+      - "traefik.http.routers.listener.entrypoints=websecure"
+      - "traefik.http.routers.listener.tls=true"
+      - "traefik.http.services.listener.loadbalancer.server.port=80"
+
+  # Shared payload host for "host your own page" client-side rungs. Players submit HTML;
+  # it's served at https://grader.${DOMAIN}/<id> and the admin bot opens each queued
+  # submission. grader.${DOMAIN} and store.${DOMAIN} are same-site (shared parent ${DOMAIN}),
+  # so a reviewer's cookie rides the cross-origin fetch — now over real HTTPS.
+  grader:
+    build: ./grader
+    container_name: grader
+    restart: unless-stopped
+    networks:
+      - ctfnet
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grader.rule=Host(`grader.${DOMAIN:-ctf.test}`)"
+      - "traefik.http.routers.grader.entrypoints=websecure"
+      - "traefik.http.routers.grader.tls=true"
+      - "traefik.http.services.grader.loadbalancer.server.port=80"
 
   # Shared headless-Chromium "admin bot" — the victim for every client-side rung.
   # Drop a plugin in infra/adminbot/plugins/ (act(driver)); it runs each cycle.
@@ -39,10 +100,11 @@ services:
     environment:
       CYCLE_MINUTES: "${BOT_CYCLE_MINUTES:-2}"
       FLAG_XSS_STORED: "${FLAG_XSS_STORED:-}"
+      DOMAIN: "${DOMAIN:-ctf.test}"            # plugins visit https://<name>.${DOMAIN}
     volumes:
       - ./adminbot/plugins:/app/plugins                     # add rungs without a rebuild
     extra_hosts:
-      - "host.docker.internal:host-gateway"                 # reach challenge host ports
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     networks:
       - ctfnet

@@ -36,6 +36,23 @@ checks submitted flags, stores progress, and handles login/password auth.
   recover them (`/admin/users`). Deliberate for a short local CTF — not a production
   pattern. The admin account is seeded from `ADMIN_USER` / `ADMIN_PASS`.
 
+## Shared client-side infra (`listener/`, `adminbot/`, `grader/`)
+
+Client-side rungs (XSS/CSRF/CORS) reuse three shared services on `ctfnet`, all started by `just up`:
+
+- **`listener/`** (`:8091`) — request-bin exfil sink. A hit to `http://listener/l/<id>/` is tagged to
+  that player's bucket; the hub's **Listener** tab shows each player only their own hits. `/__view` is
+  the raw firehose. The beacon host is `listener` (ctfnet DNS) because payloads run inside the bot.
+- **`adminbot/`** — one headless-Chromium "admin/reviewer" victim. `bot.py` loads every
+  `plugins/*.py` (bind-mounted — drop a file, no rebuild) and calls its `act(driver)` each cycle,
+  running one pass immediately on start (so `docker restart adminbot` forces a cycle).
+- **`grader/`** (`:8096`, aliased `grader.ctf.test`) — payload host for "host your own page" rungs.
+  Players `POST /submit` raw HTML and get an id; it's served at `grader.ctf.test/<id>`; the bot opens
+  each `/pending` submission and marks it `/<id>/done`. This removes any need for student-side
+  hosting. A challenge store that must be **same-site** with the grader (so a `SameSite=Lax` cookie
+  rides a cross-origin `fetch` over plain HTTP — the CORS rung) joins `ctfnet` with a sibling alias
+  under the same parent, e.g. `store.ctf.test` (both → registrable domain `ctf.test`).
+
 ## Adding a challenge
 
 ### 1. Add a tile (always)

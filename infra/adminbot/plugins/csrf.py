@@ -1,11 +1,15 @@
-import time, json, urllib.request
+import os, time, json, urllib.request, ssl
 
-BASE = "http://host.docker.internal:8094"
+DOMAIN = os.environ.get("DOMAIN", "ctf.test")
+BASE = f"https://csrf.{DOMAIN}"
+_ctx = ssl.create_default_context()
+_ctx.check_hostname = False
+_ctx.verify_mode = ssl.CERT_NONE
 
 
 def act(driver):
     try:
-        urls = json.loads(urllib.request.urlopen(BASE + "/reports.json", timeout=5).read())
+        urls = json.loads(urllib.request.urlopen(BASE + "/reports.json", timeout=5, context=_ctx).read())
     except Exception:
         urls = []
     driver.get(BASE + "/")

@@ -1,7 +1,8 @@
 import os, time
 
+DOMAIN = os.environ.get("DOMAIN", "ctf.test")
 FLAG = os.environ.get("FLAG_XSS_STORED", "")
-BASE = "http://host.docker.internal:8092"
+BASE = f"https://xss-stored.{DOMAIN}"
 
 
 def act(driver):

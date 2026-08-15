@@ -22,7 +22,8 @@ def load_plugins():
 def make_driver():
     opts = Options()
     opts.binary_location = "/usr/bin/chromium"
-    for a in ("--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"):
+    for a in ("--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
+              "--ignore-certificate-errors"):   # accept the self-signed wildcard behind Traefik
         opts.add_argument(a)
     d = webdriver.Chrome(service=Service("/usr/bin/chromedriver"), options=opts)
     d.set_page_load_timeout(30)

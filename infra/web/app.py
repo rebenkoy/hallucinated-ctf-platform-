@@ -1,7 +1,7 @@
 """vuln-services CTF hub — a deliberately minimal Flask GUI.
 
 Does four things and no more:
-  1. shows challenge tiles + descriptions (from challenges.toml)
+  1. shows challenge tiles + descriptions (from the active-challenges/ manifest)
   2. checks submitted flags (static, constant-time compare)
   3. stores per-user progress (sqlite)
   4. login + password auth (self-register; passwords stored PLAINTEXT so an
@@ -30,8 +30,12 @@ BASE = Path(__file__).resolve().parent
 DATA_DIR = BASE / "data"
 DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "ctf.sqlite"
-CHALLENGES_PATH = BASE / "challenges.toml"
+# The live manifest: one dir per active challenge, each with a flag.txt and symlinked
+# meta.toml + readme.md. Assembled incrementally by `just setup`.
+ACTIVE_DIR = BASE / "active-challenges"
 LISTENER_URL = os.environ.get("LISTENER_URL", "http://listener:80")
+# base domain — tiles/links render as https://<name>.${DOMAIN}
+DOMAIN = os.environ.get("DOMAIN", "ctf.test")
 # public repo holding the (sanitized) challenge source; tiles deep-link into it
 TASKS_REPO_URL = os.environ.get("TASKS_REPO_URL", "https://github.com/rebenkoy/les-simple-ctf")
 
@@ -43,13 +47,40 @@ def now_iso():
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 
+def sub_host(s):
+    """Substitute the {host} placeholder in manifest text with the configured domain."""
+    return s.replace("{host}", DOMAIN)
+
+
 # ---------------------------------------------------------------------------
 # challenge manifest
 # ---------------------------------------------------------------------------
+def service_link(c):
+    """The service URL for a challenge, or None. An explicit `link` in meta wins
+    (with {host} substituted); otherwise `web = true` means https://<id>.<domain>."""
+    if c.get("link"):
+        return sub_host(c["link"])
+    if c.get("web"):
+        return f"https://{c['id']}.{DOMAIN}"
+    return None
+
+
 def load_challenges():
-    with open(CHALLENGES_PATH, "rb") as f:
-        data = tomllib.load(f)
-    chals = data.get("challenge", [])
+    chals = []
+    if ACTIVE_DIR.is_dir():
+        for d in sorted(ACTIVE_DIR.iterdir()):
+            meta = d / "meta.toml"
+            if not d.is_dir() or not meta.exists():
+                continue
+            with open(meta, "rb") as f:
+                c = tomllib.load(f)
+            c.setdefault("id", d.name)
+            readme = d / "readme.md"
+            c["description"] = readme.read_text() if readme.exists() else ""
+            flagf = d / "flag.txt"
+            c["flag"] = flagf.read_text().strip() if flagf.exists() else ""
+            c["link"] = service_link(c)
+            chals.append(c)
     chals.sort(key=lambda c: c.get("order", 0))
     return chals
 
@@ -64,9 +95,14 @@ def listener_id(uid):
 
 
 def source_url(c):
-    """Deep link to this challenge's source in the public tasks repo, or None."""
-    name = c.get("source")
-    return f"{TASKS_REPO_URL}/tree/master/{name}" if name else None
+    """Deep link to this challenge's source, or None. `source` may be a full URL
+    (used as-is) or a repo subdir joined onto TASKS_REPO_URL."""
+    src = c.get("source")
+    if not src:
+        return None
+    if src.startswith(("http://", "https://")):
+        return src
+    return f"{TASKS_REPO_URL}/tree/master/{src}"
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +289,7 @@ def challenge(cid):
         is not None
     )
     desc_html = md.markdown(
-        c.get("description", ""), extensions=["fenced_code", "tables"]
+        sub_host(c.get("description", "")), extensions=["fenced_code", "tables"]
     )
     return render_template(
         "challenge.html", c=c, desc_html=desc_html, solved=solved,
@@ -303,6 +339,7 @@ def listener_bucket(lid):
         hits=hits,
         error=error,
         lid=lid,
+        domain=DOMAIN,
         is_mine=(lid == listener_id(session["uid"])),
     )
 
