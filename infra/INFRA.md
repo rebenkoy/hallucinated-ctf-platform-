@@ -45,13 +45,22 @@ Client-side rungs (XSS/CSRF/CORS) reuse three shared services on `ctfnet`, all s
   the raw firehose. The beacon host is `listener` (ctfnet DNS) because payloads run inside the bot.
 - **`adminbot/`** — one headless-Chromium "admin/reviewer" victim. `bot.py` loads every
   `plugins/*.py` (bind-mounted — drop a file, no rebuild) and calls its `act(driver)` each cycle,
-  running one pass immediately on start (so `docker restart adminbot` forces a cycle).
-- **`grader/`** (`:8096`, aliased `grader.ctf.test`) — payload host for "host your own page" rungs.
+  running one pass immediately on start (so `docker restart adminbot` forces a cycle). Each plugin
+  drains its challenge's `GET /pending`, acts once per item, then `GET /seen/<id>` (idempotent — a
+  payload is looked at exactly once) and pings `GET/POST /heartbeat`. The challenge exposes
+  `/status.json` (per-session item ids + `last_online`, **no payload contents**) so the player's page
+  shows a per-submission spinner that stops when the bot has looked, plus a "reviewer last online"
+  time. Submissions are **session-scoped** (a 1h `sid` cookie): a player sees only their own on the
+  challenge page, while the bot's privileged view (`/admin`, reported links, hosted pages) still
+  spans all pending items.
+- **`grader/`** (`:8096`, aliased `grader.ctf.test`) — payload host for the **CORS** rung.
   Players `POST /submit` raw HTML and get an id; it's served at `grader.ctf.test/<id>`; the bot opens
   each `/pending` submission and marks it `/<id>/done`. This removes any need for student-side
   hosting. A challenge store that must be **same-site** with the grader (so a `SameSite=Lax` cookie
   rides a cross-origin `fetch` over plain HTTP — the CORS rung) joins `ctfnet` with a sibling alias
-  under the same parent, e.g. `store.ctf.test` (both → registrable domain `ctf.test`).
+  under the same parent, e.g. `store.ctf.test` (both → registrable domain `ctf.test`). The **CSRF**
+  rung self-hosts instead: players `POST /host` raw HTML → served at `csrf.ctf.test/hosted/<id>`,
+  which the CSRF bot opens while signed in as admin.
 
 ## Adding a challenge
 

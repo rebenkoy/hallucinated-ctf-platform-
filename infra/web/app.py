@@ -14,6 +14,7 @@ import os
 import hmac
 import json
 import hashlib
+import secrets
 import sqlite3
 import tomllib
 import functools
@@ -89,9 +90,23 @@ CHALLENGES = load_challenges()
 CHALLENGE_BY_ID = {c["id"]: c for c in CHALLENGES}
 
 
+def listener_salt(uid):
+    """Per-player secret mixed into the listener token so a player can rotate their
+    address (see /listener/reset). Lazily generated for accounts predating the column."""
+    db = get_db()
+    row = db.execute("SELECT listener_salt FROM users WHERE id = ?", (uid,)).fetchone()
+    salt = row["listener_salt"] if row else None
+    if not salt:
+        salt = secrets.token_hex(8)
+        db.execute("UPDATE users SET listener_salt = ? WHERE id = ?", (salt, uid))
+        db.commit()
+    return salt
+
+
 def listener_id(uid):
-    """Stable, unguessable per-player token for the listener bucket."""
-    return hashlib.sha256(f"listener:{uid}".encode()).hexdigest()[:10]
+    """Unguessable per-player token for the listener bucket. Changes when the player
+    resets their salt, giving them a fresh address."""
+    return hashlib.sha256(f"listener:{uid}:{listener_salt(uid)}".encode()).hexdigest()[:10]
 
 
 def source_url(c):
@@ -142,6 +157,11 @@ def init_db():
         );
         """
     )
+    # per-player listener salt (added later — migrate existing DBs in place)
+    try:
+        db.execute("ALTER TABLE users ADD COLUMN listener_salt TEXT")
+    except sqlite3.OperationalError:
+        pass
     # seed / refresh the admin account from the environment
     admin_user = os.environ.get("ADMIN_USER", "admin")
     admin_pass = os.environ.get("ADMIN_PASS", "admin")
@@ -322,6 +342,18 @@ def submit(cid):
 def listener():
     # each player gets a private bucket keyed by an unguessable token
     return redirect(url_for("listener_bucket", lid=listener_id(session["uid"])))
+
+
+@app.route("/listener/reset", methods=["POST"])
+@login_required
+def listener_reset():
+    # rotate the salt → new bucket token. Old address stops collecting hits.
+    db = get_db()
+    db.execute("UPDATE users SET listener_salt = ? WHERE id = ?",
+               (secrets.token_hex(8), session["uid"]))
+    db.commit()
+    flash("Listener address reset — your previous address no longer collects hits.", "ok")
+    return redirect(url_for("listener"))
 
 
 @app.route("/listener/<lid>")

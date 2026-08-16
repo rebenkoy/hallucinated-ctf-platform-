@@ -147,6 +147,12 @@ button:hover { filter: brightness(1.08); }
 }
 .muted { color: var(--muted); }
 .warn { color: var(--muted); font-size: 0.85rem; border-left: 3px solid var(--err); padding-left: 0.7rem; }
+.reset-form { margin-top: 0.9rem; display: flex; align-items: center; gap: 0.6rem; }
+.btn-reset {
+  padding: 0.45rem 0.9rem; border-radius: var(--radius); border: 1px solid var(--err);
+  background: transparent; color: var(--err); font-weight: 600; font-size: 0.85rem; cursor: pointer;
+}
+.btn-reset:hover { filter: none; background: rgba(248, 81, 73, 0.12); }
 
 /* tables */
 .tablewrap { overflow-x: auto; }

