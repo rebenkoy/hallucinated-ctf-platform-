@@ -100,9 +100,20 @@ vault-up:
     $DC -f challenges/sni-hidden-vault/docker-compose.yml up -d --build
     echo "vault-up: hidden-vault live; Host($SECRET) routed. Point that host's DNS at the ingress."
 
-# stop and remove the stack
+# stop and remove EVERYTHING — every challenge container plus the shared infra stack
 down:
-    {{compose}} down
+    #!/usr/bin/env sh
+    set -eu
+    set -a; [ -f infra/.env ] && . ./infra/.env; set +a
+    docker compose version >/dev/null 2>&1 || { echo "just: needs Docker Compose v2 (the v1 'docker-compose' rejects these files — top-level 'name:'). Install: apt-get install -y docker-compose-plugin" >&2; exit 1; }
+    DC="docker compose"
+    # every challenge (forensics included — they may have been started by hand)
+    for cf in challenges/*/docker-compose.yml; do
+        echo "<<< $(basename "$(dirname "$cf")")"
+        $DC -f "$cf" down
+    done
+    # shared infra last
+    $DC -f infra/docker-compose.yml down
 
 # restart the web service (re-reads the active-challenges manifest)
 reload:
