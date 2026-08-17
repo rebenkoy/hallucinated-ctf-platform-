@@ -2,8 +2,12 @@ import time, json, html
 from collections import deque
 from datetime import datetime, timezone
 from flask import Flask, request, Response
+from flask_sock import Sock
 
 app = Flask(__name__)
+# keep the websocket alive through Traefik's idle timeout
+app.config["SOCK_SERVER_OPTIONS"] = {"ping_interval": 25}
+sock = Sock(app)
 WINDOW = 300
 HITS = deque(maxlen=1000)
 METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]
@@ -34,6 +38,24 @@ def feed():
     wanted = request.args.get("id")                  # optional per-player filter
     items = [h for h in HITS if wanted is None or h["id"] == wanted]
     return Response(json.dumps(list(reversed(items))), mimetype="application/json")
+
+
+@sock.route("/ws/<lid>")
+def ws_feed(ws, lid):
+    # push this player's bucket live — a fresh snapshot whenever it changes (new hit or a
+    # hit ages out of the 5-min window). One thread per open Listener tab (gunicorn gthread).
+    last = None
+    try:
+        while True:
+            prune()
+            items = [h for h in HITS if h["id"] == lid]
+            payload = json.dumps(list(reversed(items)))
+            if payload != last:
+                ws.send(payload)
+                last = payload
+            time.sleep(1)
+    except Exception:
+        return  # client went away
 
 
 @app.route("/__view")

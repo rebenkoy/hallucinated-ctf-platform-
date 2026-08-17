@@ -86,8 +86,39 @@ def load_challenges():
     return chals
 
 
-CHALLENGES = load_challenges()
-CHALLENGE_BY_ID = {c["id"]: c for c in CHALLENGES}
+# The manifest is re-read whenever any meta.toml / readme.md / flag.txt changes on disk
+# (or a challenge dir is added/removed), so new challenges and edited descriptions show up
+# without restarting the hub. The stat-based signature keeps this to a few stat() calls.
+_manifest = {"sig": None, "chals": [], "by_id": {}}
+
+
+def _manifest_sig():
+    if not ACTIVE_DIR.is_dir():
+        return ()
+    sig = []
+    for d in sorted(ACTIVE_DIR.iterdir()):
+        if not d.is_dir():
+            continue
+        for name in ("meta.toml", "readme.md", "flag.txt"):
+            try:
+                # stat() follows the meta/readme symlinks → picks up edits to their targets
+                sig.append((d.name, name, (d / name).stat().st_mtime_ns))
+            except OSError:
+                pass
+    return tuple(sig)
+
+
+def get_challenges():
+    sig = _manifest_sig()
+    if sig != _manifest["sig"]:
+        chals = load_challenges()
+        _manifest.update(sig=sig, chals=chals, by_id={c["id"]: c for c in chals})
+    return _manifest["chals"]
+
+
+def get_challenge(cid):
+    get_challenges()
+    return _manifest["by_id"].get(cid)
 
 
 def listener_salt(uid):
@@ -282,21 +313,22 @@ def index():
         )
     }
     # group challenges by category, keeping category order by first appearance
+    chals = get_challenges()
     groups = {}
-    for c in CHALLENGES:
+    for c in chals:
         groups.setdefault(c.get("category", "Uncategorized"), []).append(c)
     return render_template(
         "index.html",
         groups=groups,
         solved=solved,
-        total=len(CHALLENGES),
+        total=len(chals),
     )
 
 
 @app.route("/challenge/<cid>")
 @login_required
 def challenge(cid):
-    c = CHALLENGE_BY_ID.get(cid)
+    c = get_challenge(cid)
     if c is None:
         abort(404)
     solved = (
@@ -320,7 +352,7 @@ def challenge(cid):
 @app.route("/challenge/<cid>/submit", methods=["POST"])
 @login_required
 def submit(cid):
-    c = CHALLENGE_BY_ID.get(cid)
+    c = get_challenge(cid)
     if c is None:
         abort(404)
     attempt = request.form.get("flag", "").strip()
@@ -389,7 +421,7 @@ def scoreboard():
         ORDER BY solves DESC, u.username ASC
         """
     ).fetchall()
-    return render_template("scoreboard.html", rows=rows, total=len(CHALLENGES))
+    return render_template("scoreboard.html", rows=rows, total=len(get_challenges()))
 
 
 # ---------------------------------------------------------------------------
@@ -408,7 +440,7 @@ def admin_users():
         ORDER BY u.is_admin DESC, u.created_at ASC
         """
     ).fetchall()
-    return render_template("admin.html", rows=rows, total=len(CHALLENGES))
+    return render_template("admin.html", rows=rows, total=len(get_challenges()))
 
 
 if __name__ == "__main__":

